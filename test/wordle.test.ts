@@ -15,8 +15,29 @@ const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 // Step 1: a generator for five-letter uppercase words.
 const wordForm = (letters: string) => 
   fc.array(fc.constantFrom(...letters.split('')), { minLength: 5, maxLength: 5 }).map(chars => chars.join(''));
-// const word = wordForm(ALPHABET);
-const word = wordForm('ABC');
+const word = wordForm(ALPHABET);
+
+const yellowCase = fc.tuple(
+  fc.integer({ min: 0, max: 4 }),
+  fc.integer({ min: 1, max: 4 }),
+).map(([secretIndex, offset]) => {
+  const secret = 'ABCDE';
+  const guessIndex = (secretIndex + offset) % 5;
+  const guess = ['F', 'F', 'F', 'F', 'F'];
+  guess[guessIndex] = secret[secretIndex];
+  return { secret, guess: guess.join(''), guessIndex };
+});
+
+const greenPriorityCase = fc.integer({ min: 0, max: 25 }).map(index => {
+  const a = ALPHABET[index];
+  const b = ALPHABET[(index + 1) % 26];
+  const absent = ALPHABET[(index + 2) % 26];
+  return {
+    secret: `${a}${a}${b}${a}${a}`,
+    originalGuess: `${absent}${a}${b}${a}${a}`,
+    changedGuess: `${b}${a}${b}${a}${a}`,
+  };
+});
 
 describe('matchGuess', () => {
   // Pattern: invariant. The result always has exactly five colors.
@@ -56,6 +77,24 @@ describe('matchGuess', () => {
           const inSecret = [...secret].filter(c => c === letter).length;
           expect(credited).toBeLessThanOrEqual(inSecret);
         }
+      }),
+    );
+  });
+
+  // Pattern: conditional. A letter found only at another position in the secret is yellow.
+  it('marks a letter from another position as yellow', () => {
+    fc.assert(
+      fc.property(yellowCase, ({ secret, guess, guessIndex }) => {
+        expect(matchGuess(secret, guess)[guessIndex]).toBe('Y');
+      }),
+    );
+  });
+
+  // Pattern: metamorphic. Replacing an absent guess letter with a duplicate already used by a green leaves the colors unchanged.
+  it('does not credit a duplicate letter already used by a green', () => {
+    fc.assert(
+      fc.property(greenPriorityCase, ({ secret, originalGuess, changedGuess }) => {
+        expect(matchGuess(secret, changedGuess)).toEqual(matchGuess(secret, originalGuess));
       }),
     );
   });
